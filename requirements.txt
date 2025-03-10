@@ -1,1 +1,11 @@
-fg
+streamlit
+requests
+beautifulsoup4
+pytube
+moviepy
+opencv-python
+pillow
+transformers
+google-api-python-client
+oauth2client
+imageio-ffmpeg
