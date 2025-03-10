@@ -14,10 +14,7 @@ os.environ["IMAGEIO_FFMPEG_EXE"] = "/usr/bin/ffmpeg"
 try:
     openai_api_key = st.secrets["openai"]["api_key"]
 except KeyError:
-    openai_api_key = os.getenv("OPENAI_API_KEY")
-
-if not openai_api_key:
-    st.error("OpenAI API key not found. Please add it to the app secrets.")
+    st.error("OpenAI API key not found in secrets. Please add it to the app secrets.")
     raise ValueError("OpenAI API key is missing.")
 
 openai.api_key = openai_api_key
@@ -31,7 +28,8 @@ def get_trailer_url(movie_name):
     try:
         # Step 1: Try Rotten Tomatoes
         search_url_rotten = f"https://www.rottentomatoes.com/search?search={movie_name}"
-        response_rotten = requests.get(search_url_rotten)
+        st.write(f"Fetching data from Rotten Tomatoes: {search_url_rotten}")
+        response_rotten = requests.get(search_url_rotten, headers={"User-Agent": "Mozilla/5.0"})
         if response_rotten.status_code != 200:
             st.error(f"Failed to fetch data from Rotten Tomatoes for {movie_name}. Status code: {response_rotten.status_code}")
             return None
@@ -40,7 +38,8 @@ def get_trailer_url(movie_name):
         movie_result = soup_rotten.find('search-page-media-row')
         if movie_result:
             movie_url = movie_result['data-url']
-            movie_page_response = requests.get(f"https://www.rottentomatoes.com{movie_url}")
+            st.write(f"Found movie URL on Rotten Tomatoes: {movie_url}")
+            movie_page_response = requests.get(f"https://www.rottentomatoes.com{movie_url}", headers={"User-Agent": "Mozilla/5.0"})
             if movie_page_response.status_code != 200:
                 st.error(f"Failed to fetch movie page for {movie_name}. Status code: {movie_page_response.status_code}")
                 return None
@@ -49,6 +48,7 @@ def get_trailer_url(movie_name):
             trailer_div = movie_page_soup.find('a', {'class': 'trailer-player'})
             if trailer_div:
                 trailer_url = trailer_div['href']
+                st.write(f"Found trailer URL on Rotten Tomatoes: {trailer_url}")
                 return trailer_url
     except Exception as e:
         st.error(f"Error fetching trailer from Rotten Tomatoes for {movie_name}: {e}")
@@ -58,7 +58,8 @@ def get_trailer_url(movie_name):
     try:
         search_query = f"{movie_name} official trailer"
         youtube_search_url = f"https://www.youtube.com/results?search_query={search_query}"
-        response_youtube = requests.get(youtube_search_url)
+        st.write(f"Fetching data from YouTube: {youtube_search_url}")
+        response_youtube = requests.get(youtube_search_url, headers={"User-Agent": "Mozilla/5.0"})
         if response_youtube.status_code != 200:
             st.error(f"Failed to fetch data from YouTube for {movie_name}. Status code: {response_youtube.status_code}")
             return None
@@ -70,7 +71,9 @@ def get_trailer_url(movie_name):
                 video_id = a['href'].split('v=')[1].split('&')[0]
                 break
         if video_id:
-            return f"https://www.youtube.com/watch?v={video_id}"
+            trailer_url = f"https://www.youtube.com/watch?v={video_id}"
+            st.write(f"Found trailer URL on YouTube: {trailer_url}")
+            return trailer_url
     except Exception as e:
         st.error(f"Error fetching trailer from YouTube for {movie_name}: {e}")
 
@@ -109,23 +112,36 @@ def enhance_video(input_path, output_dir="enhanced_videos"):
     enhanced_video.write_videofile(output_path, codec="libx264")
     return output_path
 
-# E. Generate SEO Content (Using OpenAI's gpt-4o)
+# E. Generate SEO Content (Using OpenAI's gpt-3.5-turbo or gpt-4o)
 def generate_seo_content(movie_name):
     try:
         # Define the prompt for SEO content generation
         prompt = f"Generate SEO-optimized title, description, and tags for a movie trailer of {movie_name}. Return the result in JSON format: {{'title': '...', 'description': '...', 'tags': ['...']}}."
 
-        # Call the OpenAI API with gpt-4o
+        # Call the OpenAI API with gpt-4o or fallback to gpt-3.5-turbo
+        model = "gpt-4o"  # Replace with "gpt-3.5-turbo" if gpt-4o is unavailable
+        st.write(f"Generating SEO content using model: {model}")
         response = openai.ChatCompletion.create(
-            model="gpt-4o",  # Use gpt-4o instead of gpt-3.5-turbo
+            model=model,
             messages=[
                 {"role": "user", "content": prompt},
                 {"role": "assistant", "content": ""}
             ]
         )
 
+        # Log the raw API response for debugging
+        st.write(f"Raw OpenAI Response: {response}")
+
         # Extract the generated content
         content = response.choices[0].message.content.strip()
+        if not content:
+            st.error(f"Empty response received from OpenAI for {movie_name}.")
+            return (
+                f"{movie_name} Official Trailer",
+                f"Watch the official trailer for {movie_name}.",
+                [movie_name, "movie trailer", "official trailer"]
+            )
+
         try:
             seo_data = eval(content)  # Convert the string to a dictionary
         except Exception as e:
@@ -219,7 +235,7 @@ if st.button("Process Movies"):
             if not trailer_url:
                 st.error(f"No trailer found for {movie_name}. Skipping...")
                 continue
-            st.write(f"Trailer URL: {trailer_url}")
+            st.success(f"Trailer URL: {trailer_url}")
 
             # Step 2: Download trailer
             st.write("Downloading trailer...")
