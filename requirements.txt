@@ -4,7 +4,7 @@ beautifulsoup4
 pytube
 moviepy>=2.0.0
 pillow
-transformers
 google-api-python-client
-google-auth-oauthlib  # Corrected package name
+google-auth-oauthlib
 imageio-ffmpeg
+openai
