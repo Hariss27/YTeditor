@@ -106,7 +106,7 @@ def generate_seo_content(movie_name):
 
         # Call the OpenAI API
         response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",  # Use the appropriate model
+            model="gpt-4o",  # Use the appropriate model
             messages=[
                 {"role": "user", "content": prompt},
                 {"role": "assistant", "content": ""}
