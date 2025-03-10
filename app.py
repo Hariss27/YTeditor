@@ -8,7 +8,7 @@ from PIL import Image, ImageDraw, ImageFont
 from transformers import pipeline
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
-from google_auth_oauthlib.flow import InstalledAppFlow
+from google_auth_oauthlib.flow import InstalledAppFlow  # Ensure correct import
 
 # Ensure FFmpeg is available (for Streamlit Cloud)
 os.environ["IMAGEIO_FFMPEG_EXE"] = "/usr/bin/ffmpeg"
