@@ -5,37 +5,64 @@ from bs4 import BeautifulSoup
 from pytube import YouTube
 from moviepy import VideoFileClip, TextClip, CompositeVideoClip  # Updated import for moviepy v2.0+
 from PIL import Image, ImageDraw, ImageFont
-from transformers import pipeline
-from google.oauth2.credentials import Credentials
-from googleapiclient.discovery import build
-from google_auth_oauthlib.flow import InstalledAppFlow  # Ensure correct import
+import openai
 
 # Ensure FFmpeg is available (for Streamlit Cloud)
 os.environ["IMAGEIO_FFMPEG_EXE"] = "/usr/bin/ffmpeg"
+
+# Load OpenAI API key from environment variables
+openai.api_key = os.getenv("OPENAI_API_KEY")
+if not openai.api_key:
+    st.error("OpenAI API key not found. Please add it to the app secrets.")
+    raise ValueError("OpenAI API key is missing.")
 
 # -------------------
 # Function Definitions
 # -------------------
 
-# A. Scrape Trailer URL
+# A. Scrape Trailer URL (Rotten Tomatoes + YouTube Fallback)
 def get_trailer_url(movie_name):
-    search_url = f"https://www.imdb.com/find?q={movie_name}"
-    response = requests.get(search_url)
-    soup = BeautifulSoup(response.text, 'html.parser')
+    # Step 1: Try Rotten Tomatoes
+    search_url_rotten = f"https://www.rottentomatoes.com/search?search={movie_name}"
+    response_rotten = requests.get(search_url_rotten)
+    if response_rotten.status_code != 200:
+        st.error(f"Failed to fetch data from Rotten Tomatoes for {movie_name}. Status code: {response_rotten.status_code}")
+        return None
 
+    soup_rotten = BeautifulSoup(response_rotten.text, 'html.parser')
     try:
-        movie_link = soup.find('a', href=True)['href']
-        movie_page_url = f"https://www.imdb.com{movie_link}"
-        movie_page_response = requests.get(movie_page_url)
-        movie_page_soup = BeautifulSoup(movie_page_response.text, 'html.parser')
+        # Find the first movie result
+        movie_result = soup_rotten.find('search-page-media-row')
+        if movie_result:
+            movie_url = movie_result['data-url']
+            movie_page_response = requests.get(f"https://www.rottentomatoes.com{movie_url}")
+            if movie_page_response.status_code != 200:
+                st.error(f"Failed to fetch movie page for {movie_name}. Status code: {movie_page_response.status_code}")
+                return None
 
-        # Find the trailer URL
-        trailer_div = movie_page_soup.find('div', {'class': 'ipc-lockup ipc-lockup--baseAlt ipc-lockup--trailer'})
-        if trailer_div:
-            trailer_url = trailer_div.find('a')['href']
-            return f"https://www.imdb.com{trailer_url}"
+            movie_page_soup = BeautifulSoup(movie_page_response.text, 'html.parser')
+            trailer_div = movie_page_soup.find('a', {'class': 'trailer-player'})
+            if trailer_div:
+                trailer_url = trailer_div['href']
+                return trailer_url
     except Exception as e:
-        st.error(f"Error fetching trailer for {movie_name}: {e}")
+        st.error(f"Error fetching trailer from Rotten Tomatoes for {movie_name}: {e}")
+
+    # Step 2: Fallback to YouTube
+    st.warning(f"No trailer found on Rotten Tomatoes for {movie_name}. Searching on YouTube...")
+    search_query = f"{movie_name} official trailer"
+    youtube_search_url = f"https://www.youtube.com/results?search_query={search_query}"
+    response_youtube = requests.get(youtube_search_url)
+    if response_youtube.status_code != 200:
+        st.error(f"Failed to fetch data from YouTube for {movie_name}. Status code: {response_youtube.status_code}")
+        return None
+
+    soup_youtube = BeautifulSoup(response_youtube.text, 'html.parser')
+    try:
+        video_id = soup_youtube.find('a', href=True)['href'].split('v=')[1].split('&')[0]
+        return f"https://www.youtube.com/watch?v={video_id}"
+    except Exception as e:
+        st.error(f"Error fetching trailer from YouTube for {movie_name}: {e}")
     return None
 
 # B. Download Trailer
@@ -71,11 +98,40 @@ def enhance_video(input_path, output_dir="enhanced_videos"):
     enhanced_video.write_videofile(output_path, codec="libx264")
     return output_path
 
-# E. Generate SEO Content
-def generate_seo_content(prompt):
-    generator = pipeline('text-generation', model='gpt2')
-    result = generator(prompt, max_length=100, num_return_sequences=1)
-    return result[0]['generated_text']
+# E. Generate SEO Content (Using OpenAI API)
+def generate_seo_content(movie_name):
+    try:
+        # Define the prompt for SEO content generation
+        prompt = f"Generate SEO-optimized title, description, and tags for a movie trailer of {movie_name}. Return the result in JSON format: {{'title': '...', 'description': '...', 'tags': ['...']}}."
+
+        # Call the OpenAI API
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",  # Use the appropriate model
+            messages=[
+                {"role": "user", "content": prompt},
+                {"role": "assistant", "content": ""}
+            ]
+        )
+
+        # Extract the generated content
+        content = response.choices[0].message.content.strip()
+        seo_data = eval(content)  # Convert the string to a dictionary
+
+        # Ensure the required fields are present
+        title = seo_data.get("title", f"{movie_name} Official Trailer")
+        description = seo_data.get("description", f"Watch the official trailer for {movie_name}.")
+        tags = seo_data.get("tags", [movie_name, "movie trailer", "official trailer"])
+
+        return title, description, tags
+
+    except Exception as e:
+        st.error(f"Error generating SEO content using OpenAI: {e}")
+        # Fallback to default SEO content
+        return (
+            f"{movie_name} Official Trailer",
+            f"Watch the official trailer for {movie_name}.",
+            [movie_name, "movie trailer", "official trailer"]
+        )
 
 # F. Create Thumbnail (Using PIL instead of OpenCV)
 def create_thumbnail(video_path, output_dir="thumbnails"):
@@ -95,8 +151,10 @@ def create_thumbnail(video_path, output_dir="thumbnails"):
 SCOPES = ['https://www.googleapis.com/auth/youtube.upload']
 
 def authenticate_youtube():
+    from google_auth_oauthlib.flow import InstalledAppFlow
     flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
     credentials = flow.run_local_server(port=0)
+    from googleapiclient.discovery import build
     return build('youtube', 'v3', credentials=credentials)
 
 # H. Upload to YouTube
@@ -162,10 +220,7 @@ if st.button("Process Movies"):
 
             # Step 5: Generate SEO content
             st.write("Generating SEO content...")
-            seo_prompt = f"Best {movie_name} trailer"
-            seo_content = generate_seo_content(seo_prompt)
-            title, description = seo_content.split("\n", 1)
-            tags = [movie_name, "movie trailer", "new release"]
+            title, description, tags = generate_seo_content(movie_name)
 
             # Step 6: Create thumbnail
             st.write("Creating thumbnail...")
