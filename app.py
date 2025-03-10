@@ -3,7 +3,7 @@ import os
 import requests
 from bs4 import BeautifulSoup
 from pytube import YouTube
-from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip
+from moviepy import VideoFileClip, TextClip, CompositeVideoClip  # Updated import for moviepy v2.0+
 import cv2
 from PIL import Image, ImageDraw, ImageFont
 from transformers import pipeline
@@ -47,10 +47,16 @@ def download_trailer(url, output_dir="downloads"):
     video_path = stream.download(output_path=output_dir)
     return video_path
 
-# C. Add Subtitles
+# C. Add Subtitles (Updated for moviepy v2.0+)
 def add_subtitles(video_path, subtitle_text, output_dir="edited_videos"):
     video = VideoFileClip(video_path)
-    txt_clip = TextClip(subtitle_text, fontsize=50, color='white').set_position('bottom').set_duration(video.duration)
+    txt_clip = TextClip(
+        text=subtitle_text,
+        font="Arial",
+        fontsize=50,
+        color="white"
+    ).set_position("bottom").set_duration(video.duration)
+
     final = CompositeVideoClip([video, txt_clip])
     os.makedirs(output_dir, exist_ok=True)
     output_path = os.path.join(output_dir, os.path.basename(video_path))
