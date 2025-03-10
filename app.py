@@ -10,11 +10,21 @@ import openai
 # Ensure FFmpeg is available (for Streamlit Cloud)
 os.environ["IMAGEIO_FFMPEG_EXE"] = "/usr/bin/ffmpeg"
 
-# Load OpenAI API key from environment variables
-openai.api_key = os.getenv("OPENAI_API_KEY")
-if not openai.api_key:
+# Load OpenAI API key from Streamlit Cloud secrets
+try:
+    # Try loading from st.secrets (TOML format)
+    openai_api_key = st.secrets["openai"]["api_key"]
+except KeyError:
+    # Fallback to environment variable if TOML secret is missing
+    openai_api_key = os.getenv("OPENAI_API_KEY")
+
+if not openai_api_key:
     st.error("OpenAI API key not found. Please add it to the app secrets.")
     raise ValueError("OpenAI API key is missing.")
+
+openai.api_key = openai_api_key
+
+# Rest of your code...
 
 # -------------------
 # Function Definitions
