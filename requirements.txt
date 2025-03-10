@@ -2,8 +2,7 @@ streamlit
 requests
 beautifulsoup4
 pytube
-moviepy
-opencv-python
+moviepy>=2.0.0  # Use the latest version of moviepy
 pillow
 transformers
 google-api-python-client
