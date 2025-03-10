@@ -4,7 +4,6 @@ import requests
 from bs4 import BeautifulSoup
 from pytube import YouTube
 from moviepy import VideoFileClip, TextClip, CompositeVideoClip  # Updated import for moviepy v2.0+
-import cv2
 from PIL import Image, ImageDraw, ImageFont
 from transformers import pipeline
 from google.oauth2.credentials import Credentials
@@ -63,26 +62,13 @@ def add_subtitles(video_path, subtitle_text, output_dir="edited_videos"):
     final.write_videofile(output_path, codec="libx264")
     return output_path
 
-# D. Enhance Video Quality
+# D. Enhance Video Quality (Using moviepy instead of OpenCV)
 def enhance_video(input_path, output_dir="enhanced_videos"):
-    video = cv2.VideoCapture(input_path)
-    fourcc = cv2.VideoWriter_fourcc(*'XVID')
-    width = int(video.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(video.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    fps = video.get(cv2.CAP_PROP_FPS)
-    output_path = os.path.join(output_dir, os.path.basename(input_path))
+    video = VideoFileClip(input_path)
+    enhanced_video = video.fx(lambda clip: clip.set_fps(clip.fps * 1.5))  # Example enhancement: Increase frame rate
     os.makedirs(output_dir, exist_ok=True)
-    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
-
-    while video.isOpened():
-        ret, frame = video.read()
-        if not ret:
-            break
-        enhanced_frame = cv2.convertScaleAbs(frame, alpha=1.5, beta=30)  # Adjust brightness and contrast
-        out.write(enhanced_frame)
-
-    video.release()
-    out.release()
+    output_path = os.path.join(output_dir, os.path.basename(input_path))
+    enhanced_video.write_videofile(output_path, codec="libx264")
     return output_path
 
 # E. Generate SEO Content
@@ -91,24 +77,19 @@ def generate_seo_content(prompt):
     result = generator(prompt, max_length=100, num_return_sequences=1)
     return result[0]['generated_text']
 
-# F. Create Thumbnail
+# F. Create Thumbnail (Using PIL instead of OpenCV)
 def create_thumbnail(video_path, output_dir="thumbnails"):
-    cap = cv2.VideoCapture(video_path)
-    ret, frame = cap.read()
-    cap.release()
+    video = VideoFileClip(video_path)
+    frame = video.get_frame(1)  # Get the first frame of the video
+    thumbnail_path = os.path.join(output_dir, os.path.splitext(os.path.basename(video_path))[0] + ".png")
+    os.makedirs(output_dir, exist_ok=True)
 
-    if ret:
-        thumbnail_path = os.path.join(output_dir, os.path.splitext(os.path.basename(video_path))[0] + ".png")
-        os.makedirs(output_dir, exist_ok=True)
-        cv2.imwrite(thumbnail_path, frame)
-
-        img = Image.open(thumbnail_path)
-        draw = ImageDraw.Draw(img)
-        font = ImageFont.truetype("arial.ttf", 50)
-        draw.text((50, 50), "Watch Now!", fill="white", font=font)
-        img.save(thumbnail_path)
-        return thumbnail_path
-    return None
+    img = Image.fromarray(frame)
+    draw = ImageDraw.Draw(img)
+    font = ImageFont.truetype("arial.ttf", 50)
+    draw.text((50, 50), "Watch Now!", fill="white", font=font)
+    img.save(thumbnail_path)
+    return thumbnail_path
 
 # G. Authenticate YouTube API
 SCOPES = ['https://www.googleapis.com/auth/youtube.upload']
